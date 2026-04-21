@@ -6,6 +6,16 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { OutlinePass } from 'three/addons/postprocessing/OutlinePass.js';
+import {
+  INTRO_FOCUS_KEY,
+  PANEL_LAYOUT,
+  defaultZoomOutTarget,
+  focusDistanceScale,
+  maxMoveToPlanetDurationMs
+} from './modules/ui-config.js';
+import { sectionContent, sectionOrder } from './modules/sections.js';
+import { planetData } from './modules/planet-data.js';
+import { createFocusOverlayController } from './modules/focus-overlay.js';
 
 import bgTexture1 from '/images/1.jpg';
 import bgTexture2 from '/images/2.jpg';
@@ -45,9 +55,10 @@ var camera = new THREE.PerspectiveCamera( 45, window.innerWidth/window.innerHeig
 camera.position.set(-175, 115, 5);
 
 console.log("Create the renderer");
-const renderer = new THREE.WebGL1Renderer();
+const canvas = document.querySelector('canvas.webgl');
+const renderer = new THREE.WebGL1Renderer({ canvas, antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
-document.body.appendChild(renderer.domElement);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 
 console.log("Create an orbit control");
@@ -55,6 +66,17 @@ const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.dampingFactor = 0.75;
 controls.screenSpacePanning = false;
+controls.enableZoom = false;
+
+let isUserInteracting = false;
+let manualCameraOverride = false;
+controls.addEventListener('start', () => {
+  isUserInteracting = true;
+  manualCameraOverride = true;
+});
+controls.addEventListener('end', () => {
+  isUserInteracting = false;
+});
 
 console.log("Set up texture loader");
 const cubeTextureLoader = new THREE.CubeTextureLoader();
@@ -101,9 +123,9 @@ customContainer.appendChild(gui.domElement);
 
 // ****** SETTINGS FOR INTERACTIVE CONTROLS  ******
 const settings = {
-  accelerationOrbit: 1,
+  accelerationOrbit: 2,
   acceleration: 1,
-  sunIntensity: 1.9
+  sunIntensity: 2
 };
 
 gui.add(settings, 'accelerationOrbit', 0, 10).onChange(value => {
@@ -124,13 +146,182 @@ function onMouseMove(event) {
     mouse.y = - (event.clientY / window.innerHeight) * 2 + 1;
 }
 
+function onCanvasWheel(event) {
+  // Keep wheel dedicated to scroll narrative instead of OrbitControls zoom.
+  event.preventDefault();
+
+  if (selectedPlanet) {
+    selectedPlanet = null;
+    isMovingTowardsPlanet = false;
+    isZoomingOut = false;
+    focusOverlay.resetSelectionState();
+    focusOverlay.hide();
+    const info = document.getElementById('planetInfo');
+    if (info) info.style.display = 'none';
+  }
+
+  window.scrollBy({ top: event.deltaY, left: 0, behavior: 'auto' });
+}
+
 // ******  SELECT PLANET  ******
 let selectedPlanet = null;
 let isMovingTowardsPlanet = false;
 let targetCameraPosition = new THREE.Vector3();
 let offset;
+let isZoomingOut = false;
+let zoomOutTargetPosition = new THREE.Vector3(defaultZoomOutTarget.x, defaultZoomOutTarget.y, defaultZoomOutTarget.z);
+const selectedPlanetWorldPosition = new THREE.Vector3();
+const selectedFollowPosition = new THREE.Vector3();
+const selectedPlanetDelta = new THREE.Vector3();
+const lastSelectedPlanetWorldPosition = new THREE.Vector3();
+let hasLastSelectedPlanetWorldPosition = false;
+const selectedCameraOffsetDirection = new THREE.Vector3(1, 0, 0);
+let selectedCameraDistance = 0;
+let moveToPlanetStartTime = 0;
+let preserveSelectionUntil = 0;
+const focusOverlay = createFocusOverlayController({
+  PANEL_LAYOUT,
+  sectionContent,
+  planetData,
+  INTRO_FOCUS_KEY,
+  projectToScreen
+});
+
+focusOverlay.syncViewport();
+
+// ******  SCROLL-DRIVEN CAMERA  ******
+const panels = Array.from(document.querySelectorAll('.panel'));
+const scrollState = {
+  progress: 0,
+  enabled: true
+};
+
+
+const activeEls = {
+  kicker: document.getElementById('activeKicker'),
+  title: document.getElementById('activeTitle'),
+  body: document.getElementById('activeBody'),
+  navLinks: Array.from(document.querySelectorAll('.site-nav__link')),
+  tags: Array.from(document.querySelectorAll('.planet-tag'))
+};
+
+// Dynamically set the correct planet for each section tag.
+// This ensures the tags follow the correct planets even if the mapping changes.
+const sectionToPlanetMapping = {
+  about: 'earth',
+  experience: 'venus',
+  projects: 'mars',
+  license: 'jupiter',
+  skills: 'saturn'
+};
+
+activeEls.tags.forEach(tag => {
+  const sectionId = tag.dataset.section;
+  if (sectionId && sectionToPlanetMapping[sectionId]) {
+    tag.dataset.planet = sectionToPlanetMapping[sectionId];
+  }
+});
+
+let activeSectionId = 'introduce';
+
+function clamp01(v) {
+  return Math.min(1, Math.max(0, v));
+}
+
+function setActiveSection(sectionId) {
+  if (!sectionId || sectionId === activeSectionId) return;
+  activeSectionId = sectionId;
+
+  const content = sectionContent[sectionId];
+  if (content && activeEls.kicker && activeEls.title && activeEls.body) {
+    activeEls.kicker.textContent = content.kicker;
+    activeEls.title.textContent = content.title;
+    activeEls.body.textContent = content.body;
+  }
+
+  activeEls.navLinks.forEach(link => {
+    link.classList.toggle('is-active', link.dataset.section === sectionId);
+  });
+}
+
+function getScrollSectionId() {
+  const n = sectionOrder.length;
+  if (n === 0) return 'introduce';
+  const idx = Math.round(scrollState.progress * (n - 1));
+  return sectionOrder[Math.min(n - 1, Math.max(0, idx))];
+}
+
+function updateScrollProgress() {
+  manualCameraOverride = false;
+
+  const scrollable = document.documentElement.scrollHeight - window.innerHeight;
+  if (scrollable <= 0) {
+    scrollState.progress = 0;
+    return;
+  }
+  scrollState.progress = clamp01(window.scrollY / scrollable);
+
+  // Only update section from scroll if no planet is selected.
+  if (!selectedPlanet) {
+    setActiveSection(getScrollSectionId());
+  }
+}
+
+window.addEventListener('scroll', updateScrollProgress, { passive: true });
+updateScrollProgress();
+
+function scrollToSection(sectionId, options = {}) {
+  const el = document.getElementById(sectionId);
+  if (!el) return;
+
+  if (options.preserveSelection) {
+    preserveSelectionUntil = performance.now() + 1400;
+  }
+
+  el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// Header nav click → scroll
+activeEls.navLinks.forEach(link => {
+  link.addEventListener('click', (e) => {
+    e.preventDefault();
+
+    if (selectedPlanet) {
+      selectedPlanet = null;
+      isMovingTowardsPlanet = false;
+      isZoomingOut = false;
+      focusOverlay.resetSelectionState();
+      focusOverlay.hide();
+      const info = document.getElementById('planetInfo');
+      if (info) info.style.display = 'none';
+    }
+
+    const sectionId = link.dataset.section;
+    if (sectionId) scrollToSection(sectionId);
+  });
+});
+
+// Tag click → scroll
+activeEls.tags.forEach(tag => {
+  tag.addEventListener('click', () => {
+    const sectionId = tag.dataset.section;
+    if (sectionId) scrollToSection(sectionId);
+  });
+});
+
+const focusExploreBtn = document.getElementById('focusExploreBtn');
+if (focusExploreBtn) {
+  focusExploreBtn.addEventListener('click', () => {
+    scrollToSection('about', { preserveSelection: true });
+  });
+}
 
 function onDocumentMouseDown(event) {
+  const interactiveTarget = event.target.closest('a, button, .planet-focus-panel, .site-nav, .planet-tag');
+  if (interactiveTarget) {
+    return;
+  }
+
   event.preventDefault();
 
   mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
@@ -144,8 +335,6 @@ function onDocumentMouseDown(event) {
     selectedPlanet = identifyPlanet(clickedObject);
     if (selectedPlanet) {
       closeInfoNoZoomOut();
-      
-      settings.accelerationOrbit = 0; // Stop orbital movement
 
       // Update camera to look at the selected planet
       const planetPosition = new THREE.Vector3();
@@ -153,10 +342,28 @@ function onDocumentMouseDown(event) {
       controls.target.copy(planetPosition);
       camera.lookAt(planetPosition); // Orient the camera towards the planet
 
-      targetCameraPosition.copy(planetPosition).add(camera.position.clone().sub(planetPosition).normalize().multiplyScalar(offset));
+      selectedCameraOffsetDirection.copy(camera.position).sub(planetPosition);
+      if (selectedCameraOffsetDirection.lengthSq() === 0) {
+        selectedCameraOffsetDirection.set(1, 0, 0);
+      }
+      selectedCameraOffsetDirection.normalize();
+      selectedCameraDistance = offset * focusDistanceScale;
+
+      targetCameraPosition.copy(planetPosition).addScaledVector(selectedCameraOffsetDirection, selectedCameraDistance);
       isMovingTowardsPlanet = true;
+      moveToPlanetStartTime = performance.now();
     }
   }
+}
+
+function updatePlanetFocusOverlay() {
+  focusOverlay.update({
+    selectedPlanet,
+    activeSectionId,
+    isMovingTowardsPlanet,
+    isZoomingOut,
+    sun
+  });
 }
 
 function identifyPlanet(clickedObject) {
@@ -193,24 +400,23 @@ function identifyPlanet(clickedObject) {
   return null;
 }
 
-// ******  SHOW PLANET INFO AFTER SELECTION  ******
-function showPlanetInfo(planet) {
-  var info = document.getElementById('planetInfo');
-  var name = document.getElementById('planetName');
-  var details = document.getElementById('planetDetails');
-
-  name.innerText = planet;
-  details.innerText = `Radius: ${planetData[planet].radius}\nTilt: ${planetData[planet].tilt}\nRotation: ${planetData[planet].rotation}\nOrbit: ${planetData[planet].orbit}\nDistance: ${planetData[planet].distance}\nMoons: ${planetData[planet].moons}\nInfo: ${planetData[planet].info}`;
-
-  info.style.display = 'block';
+function getSectionForPlanetName(name) {
+  switch (name) {
+    case 'Earth': return 'about';
+    case 'Venus': return 'experience';
+    case 'Mars': return 'projects';
+    case 'Jupiter': return 'license';
+    case 'Saturn': return 'skills';
+    default: return 'introduce';
+  }
 }
-let isZoomingOut = false;
-let zoomOutTargetPosition = new THREE.Vector3(-175, 115, 5);
 // close 'x' button function
 function closeInfo() {
   var info = document.getElementById('planetInfo');
   info.style.display = 'none';
-  settings.accelerationOrbit = 1;
+  selectedPlanet = null;
+  focusOverlay.resetSelectionState();
+  focusOverlay.hide();
   isZoomingOut = true;
   controls.target.set(0, 0, 0);
 }
@@ -219,7 +425,6 @@ window.closeInfo = closeInfo;
 function closeInfoNoZoomOut() {
   var info = document.getElementById('planetInfo');
   info.style.display = 'none';
-  settings.accelerationOrbit = 1;
 }
 // ******  SUN  ******
 let sunMat;
@@ -524,90 +729,133 @@ const uranus = new createPlanet('Uranus', 25/4, 320, 82, uranusTexture, null, {
 const neptune = new createPlanet('Neptune', 24/4, 340, 28, neptuneTexture);
 const pluto = new createPlanet('Pluto', 1, 350, 57, plutoTexture)
 
-  // ******  PLANETS DATA  ******
-  const planetData = {
-    'Mercury': {
-        radius: '2,439.7 km',
-        tilt: '0.034°',
-        rotation: '58.6 Earth days',
-        orbit: '88 Earth days',
-        distance: '57.9 million km',
-        moons: '0',
-        info: 'The smallest planet in our solar system and nearest to the Sun.'
-    },
-    'Venus': {
-        radius: '6,051.8 km',
-        tilt: '177.4°',
-        rotation: '243 Earth days',
-        orbit: '225 Earth days',
-        distance: '108.2 million km',
-        moons: '0',
-        info: 'Second planet from the Sun, known for its extreme temperatures and thick atmosphere.'
-    },
-    'Earth': {
-        radius: '6,371 km',
-        tilt: '23.5°',
-        rotation: '24 hours',
-        orbit: '365 days',
-        distance: '150 million km',
-        moons: '1 (Moon)',
-        info: 'Third planet from the Sun and the only known planet to harbor life.'
-    },
-    'Mars': {
-        radius: '3,389.5 km',
-        tilt: '25.19°',
-        rotation: '1.03 Earth days',
-        orbit: '687 Earth days',
-        distance: '227.9 million km',
-        moons: '2 (Phobos and Deimos)',
-        info: 'Known as the Red Planet, famous for its reddish appearance and potential for human colonization.'
-    },
-    'Jupiter': {
-        radius: '69,911 km',
-        tilt: '3.13°',
-        rotation: '9.9 hours',
-        orbit: '12 Earth years',
-        distance: '778.5 million km',
-        moons: '95 known moons (Ganymede, Callisto, Europa, Io are the 4 largest)',
-        info: 'The largest planet in our solar system, known for its Great Red Spot.'
-    },
-    'Saturn': {
-        radius: '58,232 km',
-        tilt: '26.73°',
-        rotation: '10.7 hours',
-        orbit: '29.5 Earth years',
-        distance: '1.4 billion km',
-        moons: '146 known moons',
-        info: 'Distinguished by its extensive ring system, the second-largest planet in our solar system.'
-    },
-    'Uranus': {
-        radius: '25,362 km',
-        tilt: '97.77°',
-        rotation: '17.2 hours',
-        orbit: '84 Earth years',
-        distance: '2.9 billion km',
-        moons: '27 known moons',
-        info: 'Known for its unique sideways rotation and pale blue color.'
-    },
-    'Neptune': {
-        radius: '24,622 km',
-        tilt: '28.32°',
-        rotation: '16.1 hours',
-        orbit: '165 Earth years',
-        distance: '4.5 billion km',
-        moons: '14 known moons',
-        info: 'The most distant planet from the Sun in our solar system, known for its deep blue color.'
-    },
-    'Pluto': {
-        radius: '1,188.3 km',
-        tilt: '122.53°',
-        rotation: '6.4 Earth days',
-        orbit: '248 Earth years',
-        distance: '5.9 billion km',
-        moons: '5 (Charon, Styx, Nix, Kerberos, Hydra)',
-        info: 'Originally classified as the ninth planet, Pluto is now considered a dwarf planet.'
-    }
-};
+// Section → focus (target) + offset (camera position relative to target).
+// Targets (planets) move along their orbit; we follow their current world position for a lively scroll narrative.
+const scrollKeyframes = [
+  {
+    id: 'introduce',
+    getTarget: (out) => out.set(0, 0, 0),
+    getOffset: (out) => out.set(-175, 115, 5)
+  },
+  {
+    id: 'about',
+    // Bias target slightly left so the planet appears more to the right of frame.
+    getTarget: (out) => earth.planet.getWorldPosition(out).add(new THREE.Vector3(-12, 0, 0)),
+    getOffset: (out) => out.set(28, 10, 40)
+  },
+  {
+    id: 'experience',
+    getTarget: (out) => venus.planet.getWorldPosition(out).add(new THREE.Vector3(-12, 0, 0)),
+    getOffset: (out) => out.set(28, 10, 40)
+  },
+  {
+    id: 'projects',
+    getTarget: (out) => mars.planet.getWorldPosition(out).add(new THREE.Vector3(-12, 0, 0)),
+    getOffset: (out) => out.set(25, 10, 40)
+  },
+  {
+    id: 'license',
+    getTarget: (out) => jupiter.planet.getWorldPosition(out).add(new THREE.Vector3(-22, 0, 0)),
+    getOffset: (out) => out.set(110, 22, 140)
+  },
+  {
+    id: 'skills',
+    getTarget: (out) => saturn.planet.getWorldPosition(out).add(new THREE.Vector3(-22, 0, 0)),
+    getOffset: (out) => out.set(105, 26, 150)
+  }
+];
+
+const _tA = new THREE.Vector3();
+const _tB = new THREE.Vector3();
+const _oA = new THREE.Vector3();
+const _oB = new THREE.Vector3();
+const _pB = new THREE.Vector3();
+const _desiredTarget = new THREE.Vector3();
+const _desiredPos = new THREE.Vector3();
+
+function applyScrollCamera() {
+  if (isUserInteracting) return;
+  if (manualCameraOverride) return;
+  if (!scrollState.enabled || isMovingTowardsPlanet || isZoomingOut) return;
+  if (selectedPlanet) return;
+  if (isMovingTowardsPlanet || isZoomingOut) return;
+  if (!panels.length) return;
+
+  const n = sectionOrder.length;
+  if (n < 2) return;
+
+  const scaled = scrollState.progress * (n - 1);
+  const aIdx = Math.floor(scaled);
+  const bIdx = Math.min(n - 1, aIdx + 1);
+  const t = scaled - aIdx;
+
+  const aId = sectionOrder[aIdx];
+  const bId = sectionOrder[bIdx];
+
+  const a = scrollKeyframes.find(k => k.id === aId) || scrollKeyframes[0];
+  const b = scrollKeyframes.find(k => k.id === bId) || scrollKeyframes[0];
+
+  a.getTarget(_tA);
+  b.getTarget(_tB);
+  a.getOffset(_oA);
+  b.getOffset(_oB);
+
+  _desiredTarget.copy(_tA).lerp(_tB, t);
+  _pB.copy(_tB).add(_oB);
+  _desiredPos.copy(_tA).add(_oA).lerp(_pB, t);
+
+  camera.position.lerp(_desiredPos, 0.06);
+  controls.target.lerp(_desiredTarget, 0.08);
+  // camera.lookAt(controls.target);
+}
+
+const _worldPos = new THREE.Vector3();
+const _ndc = new THREE.Vector3();
+const _cameraSpace = new THREE.Vector3();
+function projectToScreen(worldPosition, out) {
+  _ndc.copy(worldPosition).project(camera);
+  _cameraSpace.copy(worldPosition).applyMatrix4(camera.matrixWorldInverse);
+  out.x = (_ndc.x * 0.5 + 0.5) * window.innerWidth;
+  out.y = (-_ndc.y * 0.5 + 0.5) * window.innerHeight;
+  out.inFront = _cameraSpace.z < 0;
+  out.visible = _ndc.z > -1 && _ndc.z < 1;
+  return out;
+}
+
+const _screen = { x: 0, y: 0, visible: false, inFront: false };
+function updatePlanetTags() {
+  if (selectedPlanet) {
+    activeEls.tags.forEach(tag => {
+      tag.style.display = 'none';
+    });
+    return;
+  }
+
+  const planetByKey = {
+    earth: earth.planet,
+    venus: venus.planet,
+    mars: mars.planet,
+    jupiter: jupiter.planet,
+    saturn: saturn.planet
+  };
+
+  activeEls.tags.forEach(tag => {
+    const key = tag.dataset.planet;
+    const planet = planetByKey[key];
+    if (!planet) return;
+
+    planet.getWorldPosition(_worldPos);
+    projectToScreen(_worldPos, _screen);
+
+    // Show tags whenever the planet is visible on screen
+    const show = _screen.visible;
+    tag.style.display = show ? 'block' : 'none';
+    if (!show) return;
+
+    tag.style.left = `${_screen.x}px`;
+    tag.style.top = `${_screen.y}px`;
+  });
+}
 
 
 // Array of planets and atmospheres for raycasting
@@ -757,14 +1005,21 @@ if (intersects.length > 0) {
 }
 // ******  ZOOM IN/OUT  ******
 if (isMovingTowardsPlanet) {
+  selectedPlanet.planet.getWorldPosition(selectedPlanetWorldPosition);
+  targetCameraPosition.copy(selectedPlanetWorldPosition).addScaledVector(selectedCameraOffsetDirection, selectedCameraDistance);
+
   // Smoothly move the camera towards the target position
-  camera.position.lerp(targetCameraPosition, 0.03);
+  camera.position.lerp(targetCameraPosition, 0.08);
+  controls.target.lerp(selectedPlanetWorldPosition, 0.2);
 
   // Check if the camera is close to the target position
-  if (camera.position.distanceTo(targetCameraPosition) < 1) {
+  const reachedTarget = camera.position.distanceTo(targetCameraPosition) < 3.0;
+  const reachedMoveTimeout = performance.now() - moveToPlanetStartTime > maxMoveToPlanetDurationMs;
+  if (reachedTarget || reachedMoveTimeout) {
       isMovingTowardsPlanet = false;
-      showPlanetInfo(selectedPlanet.name);
-
+      const sectionId = getSectionForPlanetName(selectedPlanet.name);
+        scrollToSection(sectionId, { preserveSelection: true });
+      setActiveSection(sectionId);
   }
 } else if (isZoomingOut) {
   camera.position.lerp(zoomOutTargetPosition, 0.05);
@@ -773,6 +1028,38 @@ if (isMovingTowardsPlanet) {
       isZoomingOut = false;
   }
 }
+
+if (!selectedPlanet) {
+  hasLastSelectedPlanetWorldPosition = false;
+}
+
+if (selectedPlanet && !isMovingTowardsPlanet && !isZoomingOut && !isUserInteracting) {
+  selectedPlanet.planet.getWorldPosition(selectedPlanetWorldPosition);
+
+  if (!hasLastSelectedPlanetWorldPosition) {
+    lastSelectedPlanetWorldPosition.copy(selectedPlanetWorldPosition);
+    hasLastSelectedPlanetWorldPosition = true;
+  }
+
+  selectedPlanetDelta.copy(selectedPlanetWorldPosition).sub(lastSelectedPlanetWorldPosition);
+
+  if (manualCameraOverride) {
+    // Keep user-controlled orbit, but translate camera with the moving planet so focus stays locked.
+    camera.position.add(selectedPlanetDelta);
+    controls.target.copy(selectedPlanetWorldPosition);
+  } else {
+    selectedFollowPosition.copy(selectedPlanetWorldPosition).addScaledVector(selectedCameraOffsetDirection, selectedCameraDistance);
+    controls.target.lerp(selectedPlanetWorldPosition, 0.12);
+    camera.position.lerp(selectedFollowPosition, 0.05);
+  }
+
+  lastSelectedPlanetWorldPosition.copy(selectedPlanetWorldPosition);
+}
+
+  // ******  SCROLL CAMERA (when not zooming/selecting)  ******
+  applyScrollCamera();
+  updatePlanetTags();
+  updatePlanetFocusOverlay();
 
   controls.update();
   requestAnimationFrame(animate);
@@ -784,9 +1071,13 @@ animate();
 
 window.addEventListener('mousemove', onMouseMove, false);
 window.addEventListener('mousedown', onDocumentMouseDown, false);
+renderer.domElement.addEventListener('wheel', onCanvasWheel, { passive: false });
 window.addEventListener('resize', function(){
   camera.aspect = window.innerWidth/window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth,window.innerHeight);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   composer.setSize(window.innerWidth,window.innerHeight);
+  outlinePass.setSize(window.innerWidth, window.innerHeight);
+  focusOverlay.syncViewport();
 });

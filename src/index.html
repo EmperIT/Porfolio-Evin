@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Solar System</title>
+    <title>3D Portfolio – Solar System</title>
     <link rel="stylesheet" href="style.css">
     <style>
         #gui-container {
@@ -15,14 +15,122 @@
     </style>
 </head>
 <body>
+    <canvas class="webgl"></canvas>
+
     <div id="gui-container"></div>
-    <div><script type="module" src="./script.js"></script></div>
-    <div id="planetInfo" class="planet-info">
-        <div class="planet-info-content">
-            <span class="close-btn" onclick="closeInfo()">&times;</span>
-            <h2 id="planetName"></h2>
-            <p id="planetDetails"></p>
-        </div>
+
+    <header class="site-header">
+        <nav class="site-nav" aria-label="Primary">
+            <a class="site-nav__link" href="#introduce" data-section="introduce">Introduce</a>
+            <a class="site-nav__link" href="#about" data-section="about">About</a>
+            <a class="site-nav__link" href="#experience" data-section="experience">Experience</a>
+            <a class="site-nav__link" href="#projects" data-section="projects">Projects</a>
+            <a class="site-nav__link" href="#license" data-section="license">License</a>
+            <a class="site-nav__link" href="#skills" data-section="skills">Skills</a>
+        </nav>
+    </header>
+
+    <div class="planet-tags" aria-hidden="true">
+        <button class="planet-tag" data-planet="earth" data-section="about" type="button">About me</button>
+        <button class="planet-tag" data-planet="mars" data-section="experience" type="button">Experience</button>
+        <button class="planet-tag" data-planet="jupiter" data-section="projects" type="button">Projects</button>
+        <button class="planet-tag" data-planet="saturn" data-section="license" type="button">License</button>
+        <button class="planet-tag" data-planet="neptune" data-section="skills" type="button">Skills</button>
     </div>
+
+    <div class="planet-focus-overlay" id="planetFocusOverlay" aria-hidden="true">
+        <svg class="planet-focus-overlay__lines" id="focusLinesSvg" preserveAspectRatio="none">
+            <polyline id="focusLineLeft" points="0,0 0,0 0,0"></polyline>
+            <polyline id="focusLineRight" points="0,0 0,0 0,0"></polyline>
+        </svg>
+
+        <aside class="planet-focus-panel planet-focus-panel--left" id="focusPanelLeft">
+            <div class="planet-focus-chip" aria-hidden="true">
+                <span class="planet-focus-chip__avatar">Evin</span>
+                <span class="planet-focus-chip__meta">Welcome to my Portfolio</span>
+            </div>
+            <p class="planet-focus-panel__label" id="focusLeftLabel">Frontend Developer</p>
+            <h3 class="planet-focus-panel__title" id="focusLeftTitle">Planet</h3>
+            <p class="planet-focus-panel__body" id="focusLeftBody">Click a planet to see details.</p>
+        </aside>
+
+        <aside class="planet-focus-panel planet-focus-panel--right" id="focusPanelRight">
+            <p class="planet-focus-panel__label">Details</p>
+            <div class="planet-focus-timeline" id="focusExperienceTimeline" hidden></div>
+            <div class="planet-focus-projects" id="focusProjectsGrid" hidden></div>
+            <div class="planet-focus-about" id="focusAboutCard" hidden>
+                <div class="planet-focus-about__visual">
+                    <img class="planet-focus-about__portrait" id="focusAboutProfile" alt="Profile portrait">
+                    <div class="planet-focus-about__shine" aria-hidden="true"></div>
+                </div>
+                <div class="planet-focus-about__content">
+                    <p class="planet-focus-about__eyebrow">Profile</p>
+                    <p class="planet-focus-about__text" id="focusAboutText"></p>
+                    <div class="planet-focus-contacts" id="focusAboutContacts"></div>
+                </div>
+            </div>
+            <p class="planet-focus-panel__body planet-focus-panel__body--right" id="focusRightBody"></p>
+            <img class="planet-focus-panel__portrait" id="focusRightImage" alt="Introduce portrait">
+            <div class="planet-focus-panel__grid" id="focusRightGrid"></div>
+            <button class="planet-focus-cta" id="focusExploreBtn" type="button">
+                Explore My Journey
+                <span class="planet-focus-cta__arrow" aria-hidden="true">-></span>
+            </button>
+        </aside>
+    </div>
+
+    <main id="scroll">
+        <section class="panel" id="introduce">
+            <div class="panel__content">
+                <p class="panel__eyebrow">01</p>
+
+            </div>
+        </section>
+
+        <section class="panel" id="about">
+            <div class="panel__content">
+                <p class="panel__eyebrow">02</p>
+                <h2 class="panel__title">About me</h2>
+                <p class="panel__lead">A short story about who you are, what you care about, and what you’re aiming for.</p>
+            </div>
+        </section>
+
+        <section class="panel" id="experience">
+            <div class="panel__content">
+                <p class="panel__eyebrow">03</p>
+                <h2 class="panel__title">My Experience Journal</h2>
+                <p class="panel__lead">Highlights of the journey—roles, milestones, and what you learned.</p>
+            </div>
+        </section>
+
+        <section class="panel" id="projects">
+            <div class="panel__content">
+                <p class="panel__eyebrow">04</p>
+                <h2 class="panel__title">Projects</h2>
+                <p class="panel__lead">Selected work. Each project can become a “planet” focus later.</p>
+            </div>
+        </section>
+
+        <section class="panel" id="license">
+            <div class="panel__content">
+                <p class="panel__eyebrow">05</p>
+                <h2 class="panel__title">License and Certification</h2>
+                <p class="panel__lead">Certifications, awards, and notable credentials.</p>
+            </div>
+        </section>
+
+        <section class="panel" id="skills">
+            <div class="panel__content">
+                <p class="panel__eyebrow">06</p>
+                <h2 class="panel__title">Capability Map</h2>
+                <p class="panel__lead">A visual breakdown of languages, platforms, workflow tools, AI knowledge, and team-facing strengths.</p>
+            </div>
+        </section>
+    </main>
+
+    <script type="module" src="./script.js"></script>
+
+    <!-- Legacy planet info modal (kept hidden). -->
+    <div id="planetInfo" class="planet-info" aria-hidden="true"></div>
 </body>
 </html>
