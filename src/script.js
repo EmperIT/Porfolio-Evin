@@ -146,19 +146,43 @@ function onMouseMove(event) {
     mouse.y = - (event.clientY / window.innerHeight) * 2 + 1;
 }
 
+function clearPlanetFocusSelection() {
+  if (!selectedPlanet) return;
+  selectedPlanet = null;
+  isMovingTowardsPlanet = false;
+  isZoomingOut = false;
+  focusOverlay.resetSelectionState();
+  focusOverlay.hide();
+  const info = document.getElementById('planetInfo');
+  if (info) info.style.display = 'none';
+}
+
+function onFocusOverlayWheel(event) {
+  if (!selectedPlanet) return;
+
+  const focusPanel = event.target.closest('.planet-focus-panel');
+  if (!focusPanel) return;
+
+  const overlayRoot = document.getElementById('planetFocusOverlay');
+  if (overlayRoot && (
+    overlayRoot.classList.contains('is-experience-single') ||
+    overlayRoot.classList.contains('is-projects-single') ||
+    overlayRoot.classList.contains('is-license-single') ||
+    overlayRoot.classList.contains('is-skills-section')
+  )) {
+    return;
+  }
+
+  event.preventDefault();
+  clearPlanetFocusSelection();
+  window.scrollBy({ top: event.deltaY, left: 0, behavior: 'auto' });
+}
+
 function onCanvasWheel(event) {
   // Keep wheel dedicated to scroll narrative instead of OrbitControls zoom.
   event.preventDefault();
 
-  if (selectedPlanet) {
-    selectedPlanet = null;
-    isMovingTowardsPlanet = false;
-    isZoomingOut = false;
-    focusOverlay.resetSelectionState();
-    focusOverlay.hide();
-    const info = document.getElementById('planetInfo');
-    if (info) info.style.display = 'none';
-  }
+  clearPlanetFocusSelection();
 
   window.scrollBy({ top: event.deltaY, left: 0, behavior: 'auto' });
 }
@@ -1072,6 +1096,7 @@ animate();
 window.addEventListener('mousemove', onMouseMove, false);
 window.addEventListener('mousedown', onDocumentMouseDown, false);
 renderer.domElement.addEventListener('wheel', onCanvasWheel, { passive: false });
+window.addEventListener('wheel', onFocusOverlayWheel, { passive: false });
 window.addEventListener('resize', function(){
   camera.aspect = window.innerWidth/window.innerHeight;
   camera.updateProjectionMatrix();
