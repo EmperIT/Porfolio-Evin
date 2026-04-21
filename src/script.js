@@ -222,7 +222,7 @@ activeEls.tags.forEach(tag => {
   }
 });
 
-let activeSectionId = 'introduce';
+let activeSectionId = null;
 
 function clamp01(v) {
   return Math.min(1, Math.max(0, v));
