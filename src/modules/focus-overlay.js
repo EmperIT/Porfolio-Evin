@@ -1123,7 +1123,14 @@ export function createFocusOverlayController({
       return;
     }
 
-    if (isMovingTowardsPlanet || isZoomingOut) {
+    if (isZoomingOut) {
+      hide();
+      return;
+    }
+
+    // While moving from the introduce section we don't want to show the intro overlay.
+    // The scroll jump will update the active section at the end of the move.
+    if (isMovingTowardsPlanet && activeSectionId === 'introduce') {
       hide();
       return;
     }
@@ -1132,6 +1139,18 @@ export function createFocusOverlayController({
     projectToScreen(worldPos, screen);
 
     if (!screen.inFront) {
+      hide();
+      return;
+    }
+
+    // Only show the info when the selected planet is near the center of the viewport.
+    const centerX = window.innerWidth * 0.5;
+    const centerY = window.innerHeight * 0.5;
+    const dx = screen.x - centerX;
+    const dy = screen.y - centerY;
+    const radius = THREE.MathUtils.clamp(Math.min(window.innerWidth, window.innerHeight) * 0.09, 48, 120);
+    const centered = (dx * dx + dy * dy) <= (radius * radius);
+    if (!centered) {
       hide();
       return;
     }

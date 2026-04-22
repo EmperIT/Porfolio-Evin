@@ -140,15 +140,52 @@ gui.add(settings, 'sunIntensity', 1, 10).onChange(value => {
 const raycaster = new THREE.Raycaster();
 const mouse = new THREE.Vector2();
 
+let isHoveringClickablePlanet = false;
+
+function setCanvasPointerCursor(enabled) {
+  if (isHoveringClickablePlanet === enabled) return;
+  isHoveringClickablePlanet = enabled;
+  if (renderer && renderer.domElement) {
+    renderer.domElement.style.cursor = enabled ? 'pointer' : '';
+  }
+}
+
+function isPlanetClickableByHover(planet) {
+  if (!planet) return false;
+  const sectionId = getSectionForPlanetName(planet.name);
+  if (sectionId && sectionId !== 'introduce') return true;
+  // In introduce, user can click any planet.
+  return !activeSectionId || activeSectionId === 'introduce';
+}
+
+function updateHoverCursor(clientX, clientY) {
+  if (!renderer || !renderer.domElement) return;
+
+  mouse.x = (clientX / window.innerWidth) * 2 - 1;
+  mouse.y = - (clientY / window.innerHeight) * 2 + 1;
+
+  raycaster.setFromCamera(mouse, camera);
+  const intersects = raycaster.intersectObjects(raycastTargets);
+  if (!intersects.length) {
+    setCanvasPointerCursor(false);
+    return;
+  }
+
+  const hitPlanet = identifyPlanet(intersects[0].object);
+  setCanvasPointerCursor(isPlanetClickableByHover(hitPlanet));
+}
+
 function onMouseMove(event) {
     event.preventDefault();
-    mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
-    mouse.y = - (event.clientY / window.innerHeight) * 2 + 1;
+  mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+  mouse.y = - (event.clientY / window.innerHeight) * 2 + 1;
+  updateHoverCursor(event.clientX, event.clientY);
 }
 
 function clearPlanetFocusSelection() {
   if (!selectedPlanet) return;
   selectedPlanet = null;
+  selectionMode = 'none';
   isMovingTowardsPlanet = false;
   isZoomingOut = false;
   focusOverlay.resetSelectionState();
@@ -174,7 +211,9 @@ function onFocusOverlayWheel(event) {
   }
 
   event.preventDefault();
-  clearPlanetFocusSelection();
+  if (selectionMode === 'intro-click') {
+    clearPlanetFocusSelection();
+  }
   window.scrollBy({ top: event.deltaY, left: 0, behavior: 'auto' });
 }
 
@@ -182,14 +221,27 @@ function onCanvasWheel(event) {
   // Keep wheel dedicated to scroll narrative instead of OrbitControls zoom.
   event.preventDefault();
 
-  clearPlanetFocusSelection();
+  // Only clear selection when user explicitly picked a planet in introduce.
+  if (selectionMode === 'intro-click') {
+    clearPlanetFocusSelection();
+  }
 
   window.scrollBy({ top: event.deltaY, left: 0, behavior: 'auto' });
 }
 
 // ******  SELECT PLANET  ******
 let selectedPlanet = null;
+let selectionMode = 'none'; // 'none' | 'intro-click' | 'scroll'
+let planetsReady = false;
 let isMovingTowardsPlanet = false;
+const focusMove = {
+  startAt: 0,
+  durationMs: 0,
+  startPos: new THREE.Vector3(),
+  startTarget: new THREE.Vector3(),
+  endPos: new THREE.Vector3(),
+  endTarget: new THREE.Vector3()
+};
 let targetCameraPosition = new THREE.Vector3();
 let offset;
 let isZoomingOut = false;
@@ -203,6 +255,62 @@ const selectedCameraOffsetDirection = new THREE.Vector3(1, 0, 0);
 let selectedCameraDistance = 0;
 let moveToPlanetStartTime = 0;
 let preserveSelectionUntil = 0;
+
+function getPlanetFocusForSection(sectionId) {
+  switch (sectionId) {
+    case 'about':
+      return { planet: earth, offset: 25 };
+    case 'experience':
+      return { planet: venus, offset: 25 };
+    case 'projects':
+      return { planet: mars, offset: 15 };
+    case 'license':
+      return { planet: jupiter, offset: 50 };
+    case 'skills':
+      return { planet: saturn, offset: 50 };
+    default:
+      return null;
+  }
+}
+
+function beginPlanetFocus(nextPlanet, baseOffset, mode) {
+  if (!nextPlanet) return;
+
+  selectedPlanet = nextPlanet;
+  selectionMode = mode;
+  isZoomingOut = false;
+  manualCameraOverride = false;
+
+  const planetPosition = new THREE.Vector3();
+  selectedPlanet.planet.getWorldPosition(planetPosition);
+
+  // Determine a stable offset direction based on current camera → planet.
+  selectedCameraOffsetDirection.copy(camera.position).sub(planetPosition);
+  if (selectedCameraOffsetDirection.lengthSq() === 0) {
+    selectedCameraOffsetDirection.set(1, 0, 0);
+  }
+  selectedCameraOffsetDirection.normalize();
+
+  selectedCameraDistance = baseOffset * focusDistanceScale;
+  targetCameraPosition.copy(planetPosition).addScaledVector(selectedCameraOffsetDirection, selectedCameraDistance);
+
+  // Time-based smooth move (easing) to avoid snapping.
+  focusMove.startAt = performance.now();
+  focusMove.startPos.copy(camera.position);
+  focusMove.startTarget.copy(controls.target);
+  focusMove.endTarget.copy(planetPosition);
+  focusMove.endPos.copy(targetCameraPosition);
+
+  const travelDistance = focusMove.startPos.distanceTo(focusMove.endPos);
+  focusMove.durationMs = THREE.MathUtils.clamp(900 + travelDistance * 7, 1100, maxMoveToPlanetDurationMs);
+
+  isMovingTowardsPlanet = true;
+  moveToPlanetStartTime = focusMove.startAt;
+}
+
+function easeInOutCubic(t) {
+  return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+}
 const focusOverlay = createFocusOverlayController({
   PANEL_LAYOUT,
   sectionContent,
@@ -285,9 +393,37 @@ function updateScrollProgress() {
   }
   scrollState.progress = clamp01(window.scrollY / scrollable);
 
-  // Only update section from scroll if no planet is selected.
+  const nextSectionId = getScrollSectionId();
+  const sectionChanged = nextSectionId !== activeSectionId;
+
+  // When the user is not in introduce-click focus mode, scrolling should drive
+  // camera focus + section overlay automatically.
+  if (selectionMode !== 'intro-click') {
+    if (sectionChanged) {
+      setActiveSection(nextSectionId);
+    }
+
+    if (nextSectionId === 'introduce') {
+      if (selectedPlanet) {
+        clearPlanetFocusSelection();
+      }
+      selectionMode = 'none';
+      return;
+    }
+
+    if (sectionChanged && planetsReady) {
+      const focus = getPlanetFocusForSection(nextSectionId);
+      if (focus) {
+        beginPlanetFocus(focus.planet, focus.offset, 'scroll');
+      }
+    }
+    return;
+  }
+
+  // Legacy behavior: if user clicked a planet while on introduce, keep scroll
+  // from fighting that focus until they wheel to exit focus.
   if (!selectedPlanet) {
-    setActiveSection(getScrollSectionId());
+    setActiveSection(nextSectionId);
   }
 }
 
@@ -327,9 +463,23 @@ activeEls.navLinks.forEach(link => {
 
 // Tag click → scroll
 activeEls.tags.forEach(tag => {
-  tag.addEventListener('click', () => {
+  tag.addEventListener('click', (event) => {
+    event.preventDefault();
+
     const sectionId = tag.dataset.section;
-    if (sectionId) scrollToSection(sectionId);
+    if (!sectionId) return;
+
+    const focus = getPlanetFocusForSection(sectionId);
+    if (focus && planetsReady) {
+      // Allow switching focus even if we are currently in intro-click mode.
+      selectionMode = 'scroll';
+      setActiveSection(sectionId);
+      beginPlanetFocus(focus.planet, focus.offset, 'scroll');
+      scrollToSection(sectionId, { preserveSelection: true });
+      return;
+    }
+
+    scrollToSection(sectionId);
   });
 });
 
@@ -356,27 +506,31 @@ function onDocumentMouseDown(event) {
 
   if (intersects.length > 0) {
     const clickedObject = intersects[0].object;
-    selectedPlanet = identifyPlanet(clickedObject);
-    if (selectedPlanet) {
+    const hitPlanet = identifyPlanet(clickedObject);
+    if (!hitPlanet) return;
+
+    const sectionId = getSectionForPlanetName(hitPlanet.name);
+
+    // If the planet maps to a section tag, allow switching focus from anywhere.
+    if (sectionId && sectionId !== 'introduce') {
+      selectedPlanet = hitPlanet;
+      selectionMode = 'scroll';
       closeInfoNoZoomOut();
-
-      // Update camera to look at the selected planet
-      const planetPosition = new THREE.Vector3();
-      selectedPlanet.planet.getWorldPosition(planetPosition);
-      controls.target.copy(planetPosition);
-      camera.lookAt(planetPosition); // Orient the camera towards the planet
-
-      selectedCameraOffsetDirection.copy(camera.position).sub(planetPosition);
-      if (selectedCameraOffsetDirection.lengthSq() === 0) {
-        selectedCameraOffsetDirection.set(1, 0, 0);
-      }
-      selectedCameraOffsetDirection.normalize();
-      selectedCameraDistance = offset * focusDistanceScale;
-
-      targetCameraPosition.copy(planetPosition).addScaledVector(selectedCameraOffsetDirection, selectedCameraDistance);
-      isMovingTowardsPlanet = true;
-      moveToPlanetStartTime = performance.now();
+      setActiveSection(sectionId);
+      beginPlanetFocus(selectedPlanet, offset, 'scroll');
+      scrollToSection(sectionId, { preserveSelection: true });
+      return;
     }
+
+    // Otherwise, keep legacy behavior: only allow free planet focusing in introduce.
+    if (activeSectionId && activeSectionId !== 'introduce') {
+      return;
+    }
+
+    selectedPlanet = hitPlanet;
+    selectionMode = 'intro-click';
+    closeInfoNoZoomOut();
+    beginPlanetFocus(selectedPlanet, offset, 'intro-click');
   }
 }
 
@@ -439,6 +593,7 @@ function closeInfo() {
   var info = document.getElementById('planetInfo');
   info.style.display = 'none';
   selectedPlanet = null;
+  selectionMode = 'none';
   focusOverlay.resetSelectionState();
   focusOverlay.hide();
   isZoomingOut = true;
@@ -753,6 +908,8 @@ const uranus = new createPlanet('Uranus', 25/4, 320, 82, uranusTexture, null, {
 const neptune = new createPlanet('Neptune', 24/4, 340, 28, neptuneTexture);
 const pluto = new createPlanet('Pluto', 1, 350, 57, plutoTexture)
 
+planetsReady = true;
+
 // Section → focus (target) + offset (camera position relative to target).
 // Targets (planets) move along their orbit; we follow their current world position for a lively scroll narrative.
 const scrollKeyframes = [
@@ -848,13 +1005,6 @@ function projectToScreen(worldPosition, out) {
 
 const _screen = { x: 0, y: 0, visible: false, inFront: false };
 function updatePlanetTags() {
-  if (selectedPlanet) {
-    activeEls.tags.forEach(tag => {
-      tag.style.display = 'none';
-    });
-    return;
-  }
-
   const planetByKey = {
     earth: earth.planet,
     venus: venus.planet,
@@ -863,10 +1013,18 @@ function updatePlanetTags() {
     saturn: saturn.planet
   };
 
+  const focusedMesh = selectedPlanet ? selectedPlanet.planet : null;
+
   activeEls.tags.forEach(tag => {
     const key = tag.dataset.planet;
     const planet = planetByKey[key];
     if (!planet) return;
+
+    // Hide the tag for the planet currently in focus.
+    if (focusedMesh && planet === focusedMesh) {
+      tag.style.display = 'none';
+      return;
+    }
 
     planet.getWorldPosition(_worldPos);
     projectToScreen(_worldPos, _screen);
@@ -1029,21 +1187,33 @@ if (intersects.length > 0) {
 }
 // ******  ZOOM IN/OUT  ******
 if (isMovingTowardsPlanet) {
+  // Track the planet as it moves along its orbit during the focus move.
   selectedPlanet.planet.getWorldPosition(selectedPlanetWorldPosition);
-  targetCameraPosition.copy(selectedPlanetWorldPosition).addScaledVector(selectedCameraOffsetDirection, selectedCameraDistance);
+  focusMove.endTarget.copy(selectedPlanetWorldPosition);
+  focusMove.endPos.copy(selectedPlanetWorldPosition).addScaledVector(selectedCameraOffsetDirection, selectedCameraDistance);
 
-  // Smoothly move the camera towards the target position
-  camera.position.lerp(targetCameraPosition, 0.08);
-  controls.target.lerp(selectedPlanetWorldPosition, 0.2);
+  const elapsed = performance.now() - focusMove.startAt;
+  const rawT = focusMove.durationMs > 0 ? elapsed / focusMove.durationMs : 1;
+  const t = clamp01(rawT);
+  const eased = easeInOutCubic(t);
 
-  // Check if the camera is close to the target position
-  const reachedTarget = camera.position.distanceTo(targetCameraPosition) < 3.0;
-  const reachedMoveTimeout = performance.now() - moveToPlanetStartTime > maxMoveToPlanetDurationMs;
-  if (reachedTarget || reachedMoveTimeout) {
-      isMovingTowardsPlanet = false;
-      const sectionId = getSectionForPlanetName(selectedPlanet.name);
-        scrollToSection(sectionId, { preserveSelection: true });
+  camera.position.lerpVectors(focusMove.startPos, focusMove.endPos, eased);
+  controls.target.lerpVectors(focusMove.startTarget, focusMove.endTarget, eased);
+
+  if (t >= 1 || performance.now() - moveToPlanetStartTime > maxMoveToPlanetDurationMs) {
+    isMovingTowardsPlanet = false;
+    const sectionId = getSectionForPlanetName(selectedPlanet.name);
+
+    // If user picked a planet in introduce, jump narrative to its section.
+    // For scroll-driven focus, the scroll position already defines the section.
+    if (selectionMode === 'intro-click') {
+      scrollToSection(sectionId, { preserveSelection: true });
       setActiveSection(sectionId);
+      selectionMode = 'scroll';
+    } else {
+      setActiveSection(sectionId);
+      selectionMode = 'scroll';
+    }
   }
 } else if (isZoomingOut) {
   camera.position.lerp(zoomOutTargetPosition, 0.05);
@@ -1094,6 +1264,7 @@ loadAsteroids('/asteroids/asteroidPack.glb', 3000, 352, 370);
 animate();
 
 window.addEventListener('mousemove', onMouseMove, false);
+renderer.domElement.addEventListener('mouseleave', () => setCanvasPointerCursor(false), false);
 window.addEventListener('mousedown', onDocumentMouseDown, false);
 renderer.domElement.addEventListener('wheel', onCanvasWheel, { passive: false });
 window.addEventListener('wheel', onFocusOverlayWheel, { passive: false });

@@ -54,8 +54,8 @@ export const sectionContent = {
       },
       {
         key: "cv",
-        label: "CV",
-        tooltip: "CV",
+        label: "Resume",
+        tooltip: "Resume",
         href: "https://drive.google.com/",
         icon: "cv",
       },
@@ -68,8 +68,8 @@ export const sectionContent = {
       },
       {
         key: "phone",
-        label: "Sdt",
-        tooltip: "Sdt",
+        label: "Phone",
+        tooltip: "Phone",
         href: "tel:0334053171",
         icon: "phone",
       },
@@ -85,25 +85,14 @@ export const sectionContent = {
       "The timeline below shows what I actually worked on, how I grew, and the type of impact I created at each step.",
     timeline: [
       {
-        date: "2022",
-        title: "Started Computer Science Major",
+        date: "12/2025",
+        title: "Fresher Frontend Developer at Bmbsoft",
         detail:
-          "Built core CS fundamentals and a disciplined engineering mindset.",
+          "Contributed to CMS, App projects in a production team environment.",
         highlights: [
-          "Studied data structures, algorithms, OOP, databases, and operating systems.",
-          "Practiced problem-solving with C/C++, Java, Python through lab assignments and mini projects.",
-          "Learned how to break complex problems into maintainable program modules.",
-        ],
-      },
-      {
-        date: "2024",
-        title: "Shifted Toward Software Development",
-        detail:
-          "Moved from theory-heavy learning to building end-to-end software products.",
-        highlights: [
-          "Focused on JavaScript, React, Flutter to build both web and mobile platforms with modern frontend architecture, and reusable component design.",
-          "Built personal and team projects with real UI flows instead of isolated exercises.",
-          "Started prioritizing clean code, maintainability, and user-centered implementation.",
+          "Worked with CMS ecosystems like WordPress and Shopify for business management and commerce use cases.",
+          "Built and supported ERP-facing features connected to operational workflows across web platforms.",
+          "Handled standout real-time and mobile-notification cases in a coffee sales app, including SignalR and FCM event flows.",
         ],
       },
       {
@@ -118,14 +107,25 @@ export const sectionContent = {
         ],
       },
       {
-        date: "12/2025",
-        title: "Fresher Frontend Developer at Bmbsoft",
+        date: "2024",
+        title: "Shifted Toward Software Development",
         detail:
-          "Contributed to CMS, App projects in a production team environment.",
+          "Moved from theory-heavy learning to building end-to-end software products.",
         highlights: [
-          "Worked with CMS ecosystems like WordPress and Shopify for business management and commerce use cases.",
-          "Built and supported ERP-facing features connected to operational workflows across web platforms.",
-          "Handled standout real-time and mobile-notification cases in a coffee sales app, including SignalR and FCM event flows.",
+          "Focused on JavaScript, React, Flutter to build both web and mobile platforms with modern frontend architecture, and reusable component design.",
+          "Built personal and team projects with real UI flows instead of isolated exercises.",
+          "Started prioritizing clean code, maintainability, and user-centered implementation.",
+        ],
+      },
+      {
+        date: "2022",
+        title: "Started Computer Science Major",
+        detail:
+          "Built core CS fundamentals and a disciplined engineering mindset.",
+        highlights: [
+          "Studied data structures, algorithms, OOP, databases, and operating systems.",
+          "Practiced problem-solving with C/C++, Java, Python through lab assignments and mini projects.",
+          "Learned how to break complex problems into maintainable program modules.",
         ],
       },
     ],
