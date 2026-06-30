@@ -79,8 +79,26 @@ controls.addEventListener('end', () => {
 });
 
 console.log("Set up texture loader");
-const cubeTextureLoader = new THREE.CubeTextureLoader();
-const loadTexture = new THREE.TextureLoader();
+const loadingManager = new THREE.LoadingManager();
+loadingManager.onProgress = function(url, itemsLoaded, itemsTotal) {
+    const loadingText = document.getElementById('loading-text');
+    if (loadingText) {
+        const progress = Math.floor((itemsLoaded / itemsTotal) * 100);
+        loadingText.innerText = `Loading Solar System... ${progress}%`;
+    }
+};
+loadingManager.onLoad = function() {
+    const loadingScreen = document.getElementById('loading-screen');
+    if (loadingScreen) {
+        loadingScreen.style.opacity = 0;
+        setTimeout(() => {
+            loadingScreen.style.display = 'none';
+        }, 500);
+    }
+};
+
+const cubeTextureLoader = new THREE.CubeTextureLoader(loadingManager);
+const loadTexture = new THREE.TextureLoader(loadingManager);
 
 // ******  POSTPROCESSING setup ******
 const composer = new EffectComposer(renderer);
@@ -734,7 +752,7 @@ function createPlanet(planetName, size, position, tilt, texture, bump, ring, atm
 
 // ******  LOADING OBJECTS METHOD  ******
 function loadObject(path, position, scale, callback) {
-  const loader = new GLTFLoader();
+  const loader = new GLTFLoader(loadingManager);
 
   loader.load(path, function (gltf) {
       const obj = gltf.scene;
@@ -752,7 +770,7 @@ function loadObject(path, position, scale, callback) {
 // ******  ASTEROIDS  ******
 const asteroids = [];
 function loadAsteroids(path, numberOfAsteroids, minOrbitRadius, maxOrbitRadius) {
-  const loader = new GLTFLoader();
+  const loader = new GLTFLoader(loadingManager);
   loader.load(path, function (gltf) {
       gltf.scene.traverse(function (child) {
           if (child.isMesh) {
