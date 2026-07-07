@@ -2,14 +2,33 @@ import introduceImage from "../images/introduce.png";
 import profileImage from "../images/profile.png";
 import awgProjectImage from "../images/projects/bgAwg.png";
 import thaiyenProjectImage from "../images/projects/bgTY.png";
+import bmbsoftProjectImage from "../images/projects/bgBmbsoft.png";
 import awgLogo from "../images/projects/logoAwg.png";
 import thaiyenLogo from "../images/projects/logoTY.png";
+import bmbsoftLogo from "../images/projects/bmbsoftvn_logo.svg";
 import freecodeCampLogo from "../images/certificate/freecodeCamp.png";
 import hackerRankCertImage from "../images/certificate/fe_hr.png";
 import agileScrumCertImage from "../images/certificate/agile.png";
 import freecodeCampCertImage from "../images/certificate/js_freecodecamp.png";
 import hackerRankLogo from "../images/certificate/hackerank.png";
 import techbaseLogo from "../images/certificate/techbase.png";
+
+export const allImages = [
+  introduceImage,
+  profileImage,
+  awgProjectImage,
+  thaiyenProjectImage,
+  bmbsoftProjectImage,
+  awgLogo,
+  thaiyenLogo,
+  bmbsoftLogo,
+  freecodeCampLogo,
+  hackerRankCertImage,
+  agileScrumCertImage,
+  freecodeCampCertImage,
+  hackerRankLogo,
+  techbaseLogo
+];
 
 export const sectionOrder = [
   "introduce",
@@ -118,10 +137,10 @@ export const sectionContent = {
         ],
       },
       {
-        date: "2022",
-        title: "Started Computer Science Major",
+        date: "2022 - 2026",
+        title: "Computer Science Major - Ton Duc Thang University",
         detail:
-          "Built core CS fundamentals and a disciplined engineering mindset.",
+          "Built core CS fundamentals and a disciplined engineering mindset. Graduated with a GPA of 8.0.",
         highlights: [
           "Studied data structures, algorithms, OOP, databases, and operating systems.",
           "Practiced problem-solving with C/C++, Java, Python through lab assignments and mini projects.",
@@ -177,6 +196,26 @@ export const sectionContent = {
           "Real-time full order lifecycle from creation and processing to delivery status updates.",
           "Mobile app flow for product discovery, checkout, delivery/pickup, and payment completion.",
           "Loyalty engine with points, vouchers, notifications, and reporting by branch/channel/time.",
+        ],
+      },
+      {
+        id: "bmbsoft-landing",
+        name: "Dynamic BMBSoft Landing Page",
+        image: bmbsoftProjectImage,
+        logo: bmbsoftLogo,
+        role: "Frontend Developer",
+        company: "Bmbsoft",
+        domainUrl: "https://www.bmbsoft.com.vn/",
+        stack: ["Next.js", "TypeScript", "Tailwind CSS", "WordPress"],
+        summary:
+          "Built a Backend-for-Frontend (BFF) layer using NextJs API Routes to securely proxy requests to a headless WordPress CMS.",
+        detail:
+          "Developed an image resolution layer with Cloudinary CDN, automated media synchronization, and optimized WordPress REST APIs with caching to improve core web vitals and request reliability.",
+        highlights: [
+          "Implemented lazy loading for CMS-driven page sections using a custom slug-and-section query mechanism.",
+          "Developed automated media synchronization between WordPress and Cloudinary.",
+          "Built optimized WordPress REST APIs using WP_Query and Advanced Custom Fields (ACF).",
+          "Implemented API caching with WordPress Transients and automatic cache invalidation.",
         ],
       },
     ],
@@ -261,6 +300,7 @@ export const sectionContent = {
           { name: "Dart", icon: "https://cdn.simpleicons.org/dart/white" },
           { name: "Kotlin", icon: "https://cdn.simpleicons.org/kotlin/white" },
           { name: "PHP", icon: "https://cdn.simpleicons.org/php/white" },
+          { name: "Liquid", icon: "https://cdn.simpleicons.org/shopify/white" },
         ],
       },
       {
@@ -272,12 +312,16 @@ export const sectionContent = {
             name: "Next.js",
             icon: "https://cdn.simpleicons.org/nextdotjs/white",
           },
+          { name: "Astro.js", icon: "https://cdn.simpleicons.org/astro/white" },
           { name: "HTML5", icon: "https://cdn.simpleicons.org/html5/white" },
           { name: "CSS3", icon: "https://cdn.simpleicons.org/css/white" },
           {
             name: "Tailwind CSS",
             icon: "https://cdn.simpleicons.org/tailwindcss/white",
           },
+          { name: "Material UI", icon: "https://cdn.simpleicons.org/mui/white" },
+          { name: "Ant Design", icon: "https://cdn.simpleicons.org/antdesign/white" },
+          { name: "Bootstrap", icon: "https://cdn.simpleicons.org/bootstrap/white" },
         ],
       },
       {
@@ -301,7 +345,16 @@ export const sectionContent = {
       {
         title: "State Management",
         note: "Patterns and libraries I use to keep application state scalable, predictable, and easy to maintain.",
-        items: ["Redux", "Zustand", "Provider", "Bloc"],
+        items: ["Redux", "Redux Persist", "Zustand", "Context API", "Provider", "Bloc"],
+      },
+      {
+        title: "Database",
+        note: "Databases I have worked with for data storage and management.",
+        items: [
+          { name: "SQL Server", icon: "https://icongr.am/simple/microsoftsqlserver.svg?size=32&color=ffffff" },
+          { name: "MongoDB", icon: "https://cdn.simpleicons.org/mongodb/white" },
+          { name: "PostgreSQL", icon: "https://cdn.simpleicons.org/postgresql/white" },
+        ],
       },
       {
         title: "CMS",

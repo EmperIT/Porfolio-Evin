@@ -13,9 +13,10 @@ import {
   focusDistanceScale,
   maxMoveToPlanetDurationMs
 } from './modules/ui-config.js';
-import { sectionContent, sectionOrder } from './modules/sections.js';
+import { sectionContent, sectionOrder, allImages } from './modules/sections.js';
 import { planetData } from './modules/planet-data.js';
 import { createFocusOverlayController } from './modules/focus-overlay.js';
+import { initMobileContent, checkMobileOnResize } from './modules/mobile-content.js';
 
 import bgTexture1 from '/images/1.jpg';
 import bgTexture2 from '/images/2.jpg';
@@ -87,7 +88,21 @@ loadingManager.onProgress = function(url, itemsLoaded, itemsTotal) {
         loadingText.innerText = `Loading Solar System... ${progress}%`;
     }
 };
-loadingManager.onLoad = function() {
+
+const threejsPromise = new Promise(resolve => {
+    loadingManager.onLoad = resolve;
+});
+
+const imagePromises = allImages.map(src => {
+    return new Promise(resolve => {
+        const img = new Image();
+        img.onload = resolve;
+        img.onerror = resolve; // Resolve even on error so loading doesn't hang
+        img.src = src;
+    });
+});
+
+Promise.all([threejsPromise, ...imagePromises]).then(() => {
     const loadingScreen = document.getElementById('loading-screen');
     if (loadingScreen) {
         loadingScreen.style.opacity = 0;
@@ -95,7 +110,7 @@ loadingManager.onLoad = function() {
             loadingScreen.style.display = 'none';
         }, 500);
     }
-};
+});
 
 const cubeTextureLoader = new THREE.CubeTextureLoader(loadingManager);
 const loadTexture = new THREE.TextureLoader(loadingManager);
@@ -449,14 +464,23 @@ window.addEventListener('scroll', updateScrollProgress, { passive: true });
 updateScrollProgress();
 
 function scrollToSection(sectionId, options = {}) {
-  const el = document.getElementById(sectionId);
-  if (!el) return;
+  const n = sectionOrder.length;
+  if (n <= 1) return;
+  
+  const index = sectionOrder.indexOf(sectionId);
+  if (index === -1) return;
 
   if (options.preserveSelection) {
     preserveSelectionUntil = performance.now() + 1400;
   }
 
-  el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  const scrollable = document.documentElement.scrollHeight - window.innerHeight;
+  const targetScrollY = (index / (n - 1)) * scrollable;
+
+  window.scrollTo({
+    top: targetScrollY,
+    behavior: 'smooth'
+  });
 }
 
 // Header nav click → scroll
@@ -1294,4 +1318,8 @@ window.addEventListener('resize', function(){
   composer.setSize(window.innerWidth,window.innerHeight);
   outlinePass.setSize(window.innerWidth, window.innerHeight);
   focusOverlay.syncViewport();
+  checkMobileOnResize();
 });
+
+// Initialize mobile content if on mobile viewport
+initMobileContent();

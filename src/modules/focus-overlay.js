@@ -219,7 +219,7 @@ export function createFocusOverlayController({
 
     const updateSlider = () => {
       currentIndex = THREE.MathUtils.clamp(currentIndex, 0, maxIndex);
-      track.style.transform = `translateX(-${currentIndex * 100}%)`;
+      track.style.transform = `translateX(calc(-${currentIndex * 100}% - ${currentIndex * 40}px))`;
       slider.dataset.sliderIndex = String(currentIndex);
       prevButton.disabled = currentIndex === 0;
       nextButton.disabled = currentIndex === maxIndex;
