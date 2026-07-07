@@ -56,7 +56,7 @@ export const sectionContent = {
         key: "cv",
         label: "Resume",
         tooltip: "Resume",
-        href: "https://drive.google.com/file/d/1cs4ewJaUvStXe3ZQQnpUZOpoBaNikc-L/view?usp=drive_link",
+        href: "https://drive.google.com/drive/folders/1KBpVwOV_fGl0_sxeGw2uGahu3xK3X-yx?usp=drive_link",
         icon: "cv",
       },
       {
