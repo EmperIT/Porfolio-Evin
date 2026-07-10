@@ -65,30 +65,36 @@ export function createFocusOverlayController({
       event.preventDefault();
       event.stopPropagation();
 
-      const hasExpandedProject = els.root
-        ? els.root.classList.contains('is-project-expanded')
-        : false;
       const slider = els.projects
         ? els.projects.querySelector('[data-project-slider]')
         : null;
 
-      if (hasExpandedProject) {
-        projectList.scrollTop += event.deltaY;
-      } else {
-        const delta = Math.abs(event.deltaY) >= Math.abs(event.deltaX) ? event.deltaY : event.deltaX;
-        if (!delta || !slider || typeof slider.__shiftSlide !== 'function') {
+      const isScrollableVertically = projectList.scrollHeight > projectList.clientHeight;
+      const isVerticalScroll = Math.abs(event.deltaY) > Math.abs(event.deltaX);
+
+      if (isScrollableVertically && isVerticalScroll) {
+        const isAtTop = projectList.scrollTop <= 0 && event.deltaY < 0;
+        const isAtBottom = Math.abs(projectList.scrollHeight - projectList.clientHeight - projectList.scrollTop) <= 2 && event.deltaY > 0;
+
+        if (!isAtTop && !isAtBottom) {
+          projectList.scrollTop += event.deltaY;
           return;
         }
-
-        const now = performance.now();
-        const lastWheelAt = Number(slider.dataset.lastWheelAt || '0');
-        if (now - lastWheelAt < 380) {
-          return;
-        }
-
-        slider.dataset.lastWheelAt = String(now);
-        slider.__shiftSlide(delta > 0 ? 1 : -1);
       }
+
+      const delta = Math.abs(event.deltaY) >= Math.abs(event.deltaX) ? event.deltaY : event.deltaX;
+      if (!delta || !slider || typeof slider.__shiftSlide !== 'function') {
+        return;
+      }
+
+      const now = performance.now();
+      const lastWheelAt = Number(slider.dataset.lastWheelAt || '0');
+      if (now - lastWheelAt < 380) {
+        return;
+      }
+
+      slider.dataset.lastWheelAt = String(now);
+      slider.__shiftSlide(delta > 0 ? 1 : -1);
       return;
     }
 
@@ -150,15 +156,81 @@ export function createFocusOverlayController({
     return Math.max(PANEL_LAYOUT.topMin, Math.round(rect.bottom + extraGap));
   }
 
+  /* ── In-Card Project Detail ── */
+
+  function openDetailOverlay(project, cardEl) {
+    // Close any other open detail
+    closeDetailOverlay();
+
+    const detail = cardEl.querySelector('.planet-focus-project-card__detail');
+    if (!detail) return;
+
+    const roleCompany = [project.role, project.company].filter(Boolean).join(' • ');
+    const stack = Array.isArray(project.stack) ? project.stack : [];
+    const highlights = Array.isArray(project.highlights) ? project.highlights : [];
+
+    const metaMarkup = roleCompany
+      ? `<p class="planet-focus-project-card__detail-meta">${escapeHtml(roleCompany)}</p>`
+      : '';
+    const summaryMarkup = project.summary
+      ? `<p class="planet-focus-project-card__summary">${escapeHtml(project.summary)}</p>`
+      : '';
+    const detailBodyMarkup = project.detail
+      ? `<p class="planet-focus-project-card__detail-text">${escapeHtml(project.detail)}</p>`
+      : '';
+    const stackMarkup = stack.length
+      ? `<p class="planet-focus-project-card__stack"><span>Tools:</span> ${escapeHtml(stack.join(', '))}</p>`
+      : '';
+    const highlightsMarkup = highlights.length
+      ? `<ul class="planet-focus-project-card__highlights">${highlights.map((h) => `<li>${escapeHtml(h)}</li>`).join('')}</ul>`
+      : '';
+
+    detail.innerHTML = `
+      <header class="planet-focus-project-card__detail-header">
+        <h4 class="planet-focus-project-card__detail-title">${escapeHtml(project.name || 'Project')}</h4>
+        <button class="planet-focus-project-card__detail-close" type="button" aria-label="Close">&times;</button>
+      </header>
+      <div class="planet-focus-project-card__detail-body">
+        ${metaMarkup}${summaryMarkup}${detailBodyMarkup}${stackMarkup}${highlightsMarkup}
+      </div>
+    `;
+
+    detail.querySelector('.planet-focus-project-card__detail-close').addEventListener('click', (e) => {
+      e.stopPropagation();
+      closeDetailOverlay();
+    });
+
+    // Prevent scroll events from leaking to slider and use custom scroll speed
+    detail.addEventListener('wheel', (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      const bodyEl = detail.querySelector('.planet-focus-project-card__detail-body');
+      if (bodyEl) {
+        bodyEl.scrollTop += e.deltaY;
+      }
+    }, { passive: false });
+    
+    detail.addEventListener('touchmove', (e) => {
+      e.stopPropagation();
+    }, { passive: true });
+
+    const bodyEl = detail.querySelector('.planet-focus-project-card__detail-body');
+    if (bodyEl) bodyEl.scrollTop = 0;
+
+    requestAnimationFrame(() => {
+      cardEl.classList.add('is-detail-open');
+    });
+  }
+
+  function closeDetailOverlay() {
+    if (!els.projects) return;
+    els.projects.querySelectorAll('.planet-focus-project-card.is-detail-open').forEach((card) => {
+      card.classList.remove('is-detail-open');
+    });
+  }
+
   function syncProjectExpandedState() {
-    if (!els.root || !els.projects) return;
-
-    const hasExpandedProject = !!els.projects.querySelector('.planet-focus-project-card__toggle[aria-expanded="true"]');
-    els.root.classList.toggle('is-project-expanded', hasExpandedProject);
-
-    if (!hasExpandedProject && els.rightPanel) {
-      els.rightPanel.scrollTop = 0;
-    }
+    // kept as no-op for compatibility
   }
 
   function chunkItems(items, chunkSize = 2) {
@@ -346,6 +418,7 @@ export function createFocusOverlayController({
 
     singlePanelMode = false;
     els.root.classList.remove('is-experience-single', 'is-projects-single', 'is-license-single', 'is-project-expanded');
+    closeDetailOverlay();
 
     aboutContactsCacheKey = '';
     experienceTimelineCacheKey = '';
@@ -552,12 +625,7 @@ export function createFocusOverlayController({
             ${roleCompanyMarkup}
             <button class="planet-focus-project-card__toggle" type="button" aria-expanded="false" data-project-toggle="${projectId}">See details</button>
           </div>
-          <div class="planet-focus-project-card__detail" aria-hidden="true">
-            <p class="planet-focus-project-card__summary">${escapeHtml(project.summary || '')}</p>
-            ${detailBodyMarkup}
-            ${stackMarkup}
-            ${highlightsMarkup}
-          </div>
+          <div class="planet-focus-project-card__detail"></div>
         </article>
       `;
     });
@@ -573,53 +641,14 @@ export function createFocusOverlayController({
 
     els.projects.querySelectorAll('[data-project-toggle]').forEach((button) => {
       button.addEventListener('click', () => {
-        const card = button.closest('.planet-focus-project-card');
-        const detail = card ? card.querySelector('.planet-focus-project-card__detail') : null;
-        if (!detail) return;
-
-        const isExpanded = button.getAttribute('aria-expanded') === 'true';
-        const nextExpanded = !isExpanded;
-
-        els.projects.querySelectorAll('[data-project-toggle]').forEach((otherButton) => {
-          if (otherButton === button) return;
-          otherButton.setAttribute('aria-expanded', 'false');
-          otherButton.textContent = 'See details';
-        });
-
-        els.projects.querySelectorAll('.planet-focus-project-card').forEach((otherCard) => {
-          if (otherCard === card) return;
-          otherCard.classList.remove('is-open');
-          const otherDetail = otherCard.querySelector('.planet-focus-project-card__detail');
-          if (otherDetail) {
-            otherDetail.setAttribute('aria-hidden', 'true');
-          }
-        });
-
-        button.setAttribute('aria-expanded', nextExpanded ? 'true' : 'false');
-        button.textContent = isExpanded ? 'See details' : 'Hide details';
-        card.classList.toggle('is-open', nextExpanded);
-        detail.setAttribute('aria-hidden', nextExpanded ? 'false' : 'true');
-
-        const slider = els.projects.querySelector('[data-project-slider]');
-        const slide = button.closest('.planet-focus-projects__slide');
-        if (nextExpanded && slider && slide && typeof slider.__goToSlide === 'function') {
-          const slides = Array.from(els.projects.querySelectorAll('.planet-focus-projects__slide'));
-          const slideIndex = slides.indexOf(slide);
-          if (slideIndex >= 0) {
-            slider.__goToSlide(slideIndex);
-          }
+        const cardEl = button.closest('.planet-focus-project-card');
+        const projectId = button.getAttribute('data-project-toggle');
+        const project = items.find((p, i) => (p.id || `project-${i + 1}`) === projectId);
+        if (project && cardEl) {
+          openDetailOverlay(project, cardEl);
         }
-
-        const projectList = els.projects.querySelector('.planet-focus-projects__list');
-        if (projectList) {
-          projectList.scrollTop = 0;
-        }
-
-        syncProjectExpandedState();
       });
     });
-
-    syncProjectExpandedState();
 
     projectsCacheKey = cacheKey;
   }
@@ -830,6 +859,7 @@ export function createFocusOverlayController({
     singlePanelMode = false;
     if (els.root) {
       els.root.classList.remove('is-experience-single', 'is-projects-single', 'is-license-single', 'is-skills-section', 'is-project-expanded');
+      closeDetailOverlay();
     }
 
     if (els.root) {
