@@ -2069,6 +2069,40 @@ body {
     color: rgba(255, 255, 255, 0.85);
 }
 
+.mobile-project-card__toggle {
+    display: inline-block;
+    padding: 6px 14px;
+    font-size: 11px;
+    font-weight: 500;
+    color: #ffe67a;
+    background: rgba(255, 230, 122, 0.1);
+    border: 1px solid rgba(255, 230, 122, 0.25);
+    border-radius: 999px;
+    cursor: pointer;
+    transition: background 0.2s ease, color 0.2s ease;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    align-self: flex-start;
+}
+
+.mobile-project-card__toggle:hover,
+.mobile-project-card__toggle:active {
+    background: rgba(255, 230, 122, 0.2);
+}
+
+.mobile-project-card__expanded-content {
+    display: none;
+    flex-direction: column;
+    gap: 12px;
+    padding-top: 14px;
+    margin-top: 2px;
+    border-top: 1px dashed rgba(255, 230, 122, 0.15);
+}
+
+.mobile-project-card.is-expanded .mobile-project-card__expanded-content {
+    display: flex;
+}
+
 .mobile-project-card__detail {
     margin: 0;
     font-size: 13px;

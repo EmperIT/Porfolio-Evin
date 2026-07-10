@@ -117,9 +117,14 @@ function renderMobileProjects(container) {
             </div>
           </div>
           <p class="mobile-project-card__summary">${escapeHtml(project.summary || '')}</p>
-          ${project.detail ? `<p class="mobile-project-card__detail">${escapeHtml(project.detail)}</p>` : ''}
-          ${stack ? `<div class="mobile-project-card__stack">${stack}</div>` : ''}
-          ${highlights ? `<ul class="mobile-project-card__highlights">${highlights}</ul>` : ''}
+          ${(project.detail || stack || highlights) ? `
+            <button type="button" class="mobile-project-card__toggle">See Detail</button>
+            <div class="mobile-project-card__expanded-content">
+              ${project.detail ? `<p class="mobile-project-card__detail">${escapeHtml(project.detail)}</p>` : ''}
+              ${stack ? `<div class="mobile-project-card__stack">${stack}</div>` : ''}
+              ${highlights ? `<ul class="mobile-project-card__highlights">${highlights}</ul>` : ''}
+            </div>
+          ` : ''}
         </div>
       </article>
     `;
@@ -131,6 +136,17 @@ function renderMobileProjects(container) {
     <p class="panel__lead">${escapeHtml(section.body)}</p>
     <div class="mobile-projects">${projectsHtml}</div>
   `;
+
+  const toggles = container.querySelectorAll('.mobile-project-card__toggle');
+  toggles.forEach(toggle => {
+    toggle.addEventListener('click', (e) => {
+      const card = e.target.closest('.mobile-project-card');
+      if (card) {
+        card.classList.toggle('is-expanded');
+        e.target.textContent = card.classList.contains('is-expanded') ? 'Close Detail' : 'See Detail';
+      }
+    });
+  });
 }
 
 function renderMobileLicense(container) {
